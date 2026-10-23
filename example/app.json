@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "Scanner example",
+    "slug": "expo-mlkit-document-scanner-example",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "dev.mhakmi.documentscanner.example"
+    }
+  }
+}
