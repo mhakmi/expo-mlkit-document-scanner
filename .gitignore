@@ -1,0 +1,12 @@
+node_modules/
+build/
+*.tsbuildinfo
+.DS_Store
+
+android/build/
+android/.gradle/
+
+example/node_modules/
+example/.expo/
+example/android/
+example/ios/

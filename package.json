@@ -1,0 +1,43 @@
+{
+  "name": "expo-mlkit-document-scanner",
+  "version": "0.1.0",
+  "description": "Google's ML Kit document scanner for Expo apps on Android, with a PDF writer that keeps memory flat",
+  "license": "MIT",
+  "author": "Mohammed Hakmi",
+  "main": "build/index.js",
+  "types": "build/index.d.ts",
+  "files": [
+    "build",
+    "android/build.gradle",
+    "android/proguard-rules.pro",
+    "android/src/main",
+    "expo-module.config.json"
+  ],
+  "keywords": [
+    "expo",
+    "react-native",
+    "android",
+    "mlkit",
+    "document-scanner",
+    "pdf"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "bun run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "expo": ">=57.0.0",
+    "react-native": ">=0.86.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "~19.3.0",
+    "expo": "~58.0.14",
+    "react": "19.3.0",
+    "react-native": "0.88.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}
