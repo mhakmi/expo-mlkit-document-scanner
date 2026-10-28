@@ -4,6 +4,14 @@
   "description": "Google's ML Kit document scanner for Expo apps on Android, with a PDF writer that keeps memory flat",
   "license": "MIT",
   "author": "Mohammed Hakmi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mhakmi/expo-mlkit-document-scanner.git"
+  },
+  "homepage": "https://github.com/mhakmi/expo-mlkit-document-scanner#readme",
+  "bugs": {
+    "url": "https://github.com/mhakmi/expo-mlkit-document-scanner/issues"
+  },
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "files": [
