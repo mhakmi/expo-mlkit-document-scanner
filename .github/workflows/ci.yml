@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test
+      - run: bun run build
+      - run: bun install --frozen-lockfile
+        working-directory: example
+      - run: bunx tsc --noEmit
+        working-directory: example
+
+  kotlin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: bun install --frozen-lockfile
+      - run: bun install --frozen-lockfile
+        working-directory: example
+      - run: bunx expo prebuild --platform android --no-install
+        working-directory: example
+        env:
+          CI: 1
+      - run: ./gradlew :expo-mlkit-document-scanner:testDebugUnitTest --console=plain
+        working-directory: example/android
