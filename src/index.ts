@@ -30,7 +30,19 @@ export type PdfPage = { uri: string; rotation?: Rotation };
 
 export type PdfSummary = { pageCount: number; bytes: number };
 
-export type ScanErrorKind = 'unavailable' | 'busy' | 'failed';
+export type PrepareOptions = {
+  /** Gets a number from 0 to 1 while the download runs. */
+  onProgress?: (fraction: number) => void;
+  /**
+   * How long the download may go without progress, in milliseconds, before prepare rejects
+   * with a ScanError of kind 'timeout'. New bytes and a move to the next step, such as from
+   * downloading to installing, both count as progress. It is not a limit on the whole
+   * download, so a slow download that keeps moving does not time out. Defaults to 60000.
+   */
+  stallTimeoutMs?: number;
+};
+
+export type ScanErrorKind = 'unavailable' | 'busy' | 'timeout' | 'failed';
 
 export type PdfErrorKind = 'page_missing' | 'decode_failed' | 'out_of_space' | 'failed';
 
@@ -89,12 +101,18 @@ export async function isAvailable(): Promise<boolean> {
   return native.isAvailable();
 }
 
-export async function prepare(onProgress?: (fraction: number) => void): Promise<void> {
+const defaultStallTimeoutMs = 60_000;
+
+export async function prepare(options: PrepareOptions = {}): Promise<void> {
+  const { onProgress, stallTimeoutMs = defaultStallTimeoutMs } = options;
+  if (!Number.isFinite(stallTimeoutMs) || stallTimeoutMs <= 0) {
+    throw new RangeError(`stallTimeoutMs must be a number of milliseconds above 0, not ${stallTimeoutMs}`);
+  }
   const module = scanner();
   const subscription =
     onProgress === undefined ? null : module.addListener('onPrepareProgress', (event) => onProgress(event.fraction));
   try {
-    await module.prepare();
+    await module.prepare(stallTimeoutMs);
   } catch (error) {
     throw toScanError(error);
   } finally {

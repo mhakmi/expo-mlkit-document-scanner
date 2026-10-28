@@ -5,6 +5,8 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.IntentSender
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.android.gms.common.moduleinstall.InstallStatusListener
@@ -29,12 +31,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
+import kotlin.math.ceil
 
 class ScannerUnavailableException(cause: Throwable? = null) :
   CodedException("ERR_SCANNER_UNAVAILABLE", "Google's document scanner is not available on this phone", cause)
 
 class ScannerBusyException :
   CodedException("ERR_SCANNER_BUSY", "The scanner or the file picker is already open", null)
+
+class PrepareTimeoutException(seconds: Long) :
+  CodedException("ERR_PREPARE_TIMEOUT", "The scanner download made no progress for $seconds seconds", null)
 
 class ScanFailedException(message: String, cause: Throwable? = null) :
   CodedException("ERR_SCAN_FAILED", message, cause)
@@ -100,8 +106,8 @@ class DocumentScannerModule : Module() {
       GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(context) == ConnectionResult.SUCCESS
     }
 
-    AsyncFunction("prepare") { promise: Promise ->
-      prepare(promise)
+    AsyncFunction("prepare") { stallTimeoutMs: Double, promise: Promise ->
+      prepare(stallTimeoutMs, promise)
     }
 
     AsyncFunction("scan") { options: ScanOptions, promise: Promise ->
@@ -231,10 +237,14 @@ class DocumentScannerModule : Module() {
     }
   }
 
-  private fun prepare(promise: Promise) {
+  private fun prepare(stallTimeoutMs: Double, promise: Promise) {
     val client = ModuleInstall.getClient(context)
     val scanner = GmsDocumentScanning.getClient(GmsDocumentScannerOptions.Builder().build())
+    val handler = Handler(Looper.getMainLooper())
+    val stallDelay = stallTimeoutMs.toLong()
     var settled = false
+    var lastState = ModuleInstallStatusUpdate.InstallState.STATE_UNKNOWN
+    var lastBytes = 0L
     lateinit var listener: InstallStatusListener
 
     fun settle(error: CodedException?) {
@@ -242,15 +252,27 @@ class DocumentScannerModule : Module() {
         return
       }
       settled = true
+      handler.removeCallbacksAndMessages(null)
       client.unregisterListener(listener)
       if (error == null) promise.resolve(null) else promise.reject(error)
     }
 
+    // Play services can stop sending updates and never report a failure, so prepare gives up
+    // when neither the bytes downloaded nor the install state change for stallTimeoutMs.
+    val stalled = Runnable { settle(PrepareTimeoutException(ceil(stallTimeoutMs / 1000).toLong())) }
+
     listener = InstallStatusListener { update ->
       val progress = update.progressInfo
+      val bytes = progress?.bytesDownloaded ?: lastBytes
       if (progress != null && progress.totalBytesToDownload > 0) {
-        val fraction = progress.bytesDownloaded.toDouble() / progress.totalBytesToDownload
+        val fraction = bytes.toDouble() / progress.totalBytesToDownload
         sendEvent("onPrepareProgress", mapOf("fraction" to fraction))
+      }
+      if (update.installState != lastState || bytes > lastBytes) {
+        lastState = update.installState
+        lastBytes = bytes
+        handler.removeCallbacks(stalled)
+        handler.postDelayed(stalled, stallDelay)
       }
       when (update.installState) {
         ModuleInstallStatusUpdate.InstallState.STATE_COMPLETED -> settle(null)
@@ -259,6 +281,7 @@ class DocumentScannerModule : Module() {
       }
     }
     val request = ModuleInstallRequest.newBuilder().addApi(scanner).setListener(listener).build()
+    handler.postDelayed(stalled, stallDelay)
     client.installModules(request)
       .addOnSuccessListener { response ->
         if (response.areModulesAlreadyInstalled()) {

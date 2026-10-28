@@ -3,6 +3,7 @@ import type { PdfErrorKind, ScanErrorKind } from './index';
 export const scanErrorKinds: Record<string, ScanErrorKind> = {
   ERR_SCANNER_UNAVAILABLE: 'unavailable',
   ERR_SCANNER_BUSY: 'busy',
+  ERR_PREPARE_TIMEOUT: 'timeout',
   ERR_SCAN_FAILED: 'failed',
 };
 

@@ -87,18 +87,48 @@ describe('prepare', () => {
     fake.prepare.mockImplementation(async () => {
       fake.listeners.forEach((listener) => listener({ fraction: 0.5 }));
     });
-    await prepare((fraction) => fractions.push(fraction));
+    await prepare({ onProgress: (fraction) => fractions.push(fraction) });
     expect(fractions).toEqual([0.5]);
     expect(fake.listeners.size).toBe(0);
   });
 
   it('stops listening once it rejects, and throws a ScanError', async () => {
     fake.prepare.mockRejectedValue(nativeError('ERR_SCANNER_UNAVAILABLE'));
-    const error = await prepare(() => {}).catch((thrown: unknown) => thrown);
+    const error = await prepare({ onProgress: () => {} }).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(ScanError);
     expect(error).toMatchObject({ kind: 'unavailable' });
     expect(fake.listeners.size).toBe(0);
   });
+
+  it('gives the download 60 seconds without progress by default', async () => {
+    fake.prepare.mockResolvedValue(undefined);
+    await prepare();
+    expect(fake.prepare).toHaveBeenCalledWith(60000);
+  });
+
+  it('passes the stall timeout it is given', async () => {
+    fake.prepare.mockResolvedValue(undefined);
+    await prepare({ stallTimeoutMs: 20000 });
+    expect(fake.prepare).toHaveBeenCalledWith(20000);
+  });
+
+  it('throws a stalled download as a ScanError of kind timeout and stops listening', async () => {
+    fake.prepare.mockRejectedValue(nativeError('ERR_PREPARE_TIMEOUT', 'The scanner download made no progress for 20 seconds'));
+    const error = await prepare({ onProgress: () => {}, stallTimeoutMs: 20000 }).catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(ScanError);
+    expect(error).toMatchObject({ kind: 'timeout', message: 'The scanner download made no progress for 20 seconds' });
+    expect(fake.listeners.size).toBe(0);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'throws a RangeError for a stall timeout of %s without starting the download',
+    async (stallTimeoutMs) => {
+      const error = await prepare({ onProgress: () => {}, stallTimeoutMs }).catch((thrown: unknown) => thrown);
+      expect(error).toBeInstanceOf(RangeError);
+      expect(fake.prepare).not.toHaveBeenCalled();
+      expect(fake.listeners.size).toBe(0);
+    },
+  );
 });
 
 describe('writePdf', () => {

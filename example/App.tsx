@@ -44,6 +44,7 @@ export default function App() {
   const [status, setStatus] = useState('Ready');
   const [available, setAvailable] = useState('not checked');
   const [preparing, setPreparing] = useState('not started');
+  const [stallTimeout, setStallTimeout] = useState('');
   const [pageLimit, setPageLimit] = useState('0');
   const [mode, setMode] = useState<ScanMode>('full');
   const [galleryImport, setGalleryImport] = useState(true);
@@ -76,7 +77,11 @@ export default function App() {
   const onPrepare = () =>
     run(async () => {
       setPreparing('0%');
-      await prepare((fraction) => setPreparing(`${Math.round(fraction * 100)}%`));
+      const seconds = stallTimeout.trim();
+      await prepare({
+        onProgress: (fraction) => setPreparing(`${Math.round(fraction * 100)}%`),
+        stallTimeoutMs: seconds === '' ? undefined : Number(seconds) * 1000,
+      });
       setPreparing('done');
     });
 
@@ -150,6 +155,17 @@ export default function App() {
       <View style={styles.row}>
         <Button label="Prepare scanner" onPress={onPrepare} />
         <Text>Prepare: {preparing}</Text>
+      </View>
+      <View style={styles.row}>
+        <Text>Stall timeout (s)</Text>
+        <TextInput
+          accessibilityLabel="Stall timeout (s)"
+          style={styles.input}
+          keyboardType="number-pad"
+          placeholder="60"
+          value={stallTimeout}
+          onChangeText={setStallTimeout}
+        />
       </View>
 
       <View style={styles.row}>

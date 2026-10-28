@@ -3,7 +3,7 @@
 An Expo module that opens Google's ML Kit document scanner on Android and writes PDFs from the pages it returns.
 
 - `scan` opens the scanner with a page limit, a scanner mode, and gallery import on or off. It copies each page into a folder you name and returns the pages with their upright size.
-- `prepare` downloads the scanner module ahead of the first scan and reports progress.
+- `prepare` downloads the scanner module ahead of the first scan, reports progress, and gives up when the download stops moving.
 - `writePdf` builds a PDF from JPEG pages without decoding them, and holds at most one page in memory.
 - `pickFiles` and `importFiles` bring in images and PDFs from other apps, with a PDF's page count and a thumbnail of its first page.
 - Errors are typed. A closed scanner is a result, not an error.
@@ -36,7 +36,7 @@ import { prepare, scan, writePdf, ScanError, PdfError } from 'expo-mlkit-documen
 import { Directory, File, Paths } from 'expo-file-system';
 
 // Optional, at app start. Downloads the scanner module so the first scan does not wait.
-prepare((fraction) => console.log(`scanner ${Math.round(fraction * 100)}%`)).catch(() => {});
+prepare({ onProgress: (fraction) => console.log(`scanner ${Math.round(fraction * 100)}%`) }).catch(() => {});
 
 const pages = new Directory(Paths.document, 'pages');
 pages.create({ intermediates: true, idempotent: true });
@@ -101,11 +101,18 @@ The folder never holds half a scan. If one page fails to copy, the module delete
 
 Resolves `true` when Google Play services is ready on the phone. Resolves `false` on any platform other than Android.
 
-### `prepare(onProgress?: (fraction: number) => void): Promise<void>`
+### `prepare(options?: PrepareOptions): Promise<void>`
 
-Downloads Google's scanner module, if the phone does not have it yet, and resolves when it is installed. `onProgress` gets a number from 0 to 1 while the download runs. Without `prepare`, the first `scan` downloads the module itself and the person waits.
+Downloads Google's scanner module, if the phone does not have it yet, and resolves when it is installed. Without `prepare`, the first `scan` downloads the module itself and the person waits.
 
-Throws `ScanError('unavailable')` when the download fails or is cancelled.
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `onProgress` | `(fraction: number) => void` | none | Gets a number from 0 to 1 while the download runs. |
+| `stallTimeoutMs` | `number` | `60000` | How long the download may go without progress before `prepare` gives up. New bytes and a move to the next step, such as from downloading to installing, both count as progress. It is not a limit on the whole download, so a slow download that keeps moving does not time out. Must be above 0. |
+
+Throws `ScanError('unavailable')` when the download fails or is cancelled. Throws `ScanError('timeout')` when the download makes no progress for `stallTimeoutMs`. Throws `RangeError`, before it starts the download, when `stallTimeoutMs` is not a number above 0.
+
+Play services can stop a download partway and never report a failure. A timeout means that `prepare` stopped waiting. It does not mean that the download stopped. Play services may still finish it later, and the next `prepare` then resolves at once. Treat a timeout as a reason to try again later. Let the person scan, which starts its own download, or call `prepare` again once the phone is back online.
 
 ### `scan(options: ScanOptions): Promise<ScanResult>`
 
@@ -163,6 +170,7 @@ Both extend `Error` and carry a `kind` and a `message`.
 |---|---|
 | `unavailable` | Google's scanner cannot run on this phone, or the platform is not Android. |
 | `busy` | A scan or a file pick is already open. Only one runs at a time. |
+| `timeout` | `prepare` saw no download progress for `stallTimeoutMs`. |
 | `failed` | Anything else. The message says what went wrong. |
 
 ## How the PDF writer works

@@ -15,7 +15,7 @@ type NativeScanOptions = {
 
 declare class DocumentScannerModule extends NativeModule<Events> {
   isAvailable(): Promise<boolean>;
-  prepare(): Promise<void>;
+  prepare(stallTimeoutMs: number): Promise<void>;
   scan(options: NativeScanOptions): Promise<ScannedImage[]>;
   pickFiles(directory: string): Promise<ImportResult>;
   importFiles(uris: string[], directory: string): Promise<ImportResult>;
