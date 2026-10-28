@@ -4,6 +4,10 @@
 #   dev/android.sh unit          run the Vitest tests and the Kotlin JVM tests
 #   dev/android.sh gradle <args> run Gradle in example/android, for example gradle :expo-mlkit-document-scanner:assembleDebugAndroidTest
 #   dev/android.sh boot          boot the scanner_pixel emulator headless, creating it if missing
+#   dev/android.sh fresh         stop the emulator and boot it again with its data wiped, so the scanner module is not installed
+#   dev/android.sh network off   turn on airplane mode, which cuts the emulator's Wi-Fi and mobile data
+#   dev/android.sh network slow  slow the emulator's network to GPRS speed, about 7 KB/s, so a download takes long enough to cut
+#   dev/android.sh network on    turn airplane mode off and give the network its full speed back
 #   dev/android.sh install       install the APK on the emulator
 #   dev/android.sh scan          scan three pages and two gallery pictures in the example app, cancel a scan, write a PDF, and pick a PDF
 #   dev/android.sh check         run the instrumented tests on the emulator, then open their 10-page PDF on the Mac
@@ -148,6 +152,7 @@ is_booted() {
 }
 
 boot() {
+  local extra_args=("$@")
   if is_booted; then
     echo "$SERIAL is already running"
     return 0
@@ -162,11 +167,12 @@ boot() {
   adb_server start-server
   emulator -avd "$AVD" -ports "$CONSOLE_PORT,$ADB_DEVICE_PORT" -grpc "$GRPC_PORT" \
     -camera-back virtualscene -virtualscene-poster "wall=$POSTER" \
-    -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu host > "$LOGS/emulator.log" 2>&1 &
+    -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu host ${extra_args[@]+"${extra_args[@]}"} > "$LOGS/emulator.log" 2>&1 &
   disown
 
+  # A boot with wiped data takes more than five minutes when the Mac is busy.
   local attempt
-  for attempt in $(seq 1 100); do
+  for attempt in $(seq 1 200); do
     if is_booted; then
       break
     fi
@@ -181,7 +187,37 @@ boot() {
   adb shell settings put global transition_animation_scale 0
   adb shell settings put global animator_duration_scale 0
   adb shell settings put secure immersive_mode_confirmations confirmed
+  # On a busy Mac, system apps answer slowly and their "isn't responding" dialogs cover the app under test.
+  adb shell settings put global hide_error_dialogs 1
   echo "$SERIAL booted"
+}
+
+fresh() {
+  stop
+  local attempt
+  for attempt in $(seq 1 20); do
+    if ! lsof -nP -iTCP:"$CONSOLE_PORT" -sTCP:LISTEN > /dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  boot -wipe-data
+}
+
+network() {
+  case "$1" in
+    off) adb shell cmd connectivity airplane-mode enable ;;
+    slow) adb emu network speed gprs > /dev/null ;;
+    on)
+      adb shell cmd connectivity airplane-mode disable
+      adb emu network speed full > /dev/null
+      ;;
+    *)
+      echo "usage: $0 network on|off|slow" >&2
+      return 1
+      ;;
+  esac
+  adb shell cmd connectivity airplane-mode
 }
 
 install() {
@@ -412,7 +448,7 @@ stop() {
 }
 
 case "${1:-}" in
-  build | badging | unit | boot | install | check | scan | stop)
+  build | badging | unit | boot | fresh | install | check | scan | stop)
     "$1"
     ;;
   gradle)
@@ -429,6 +465,9 @@ case "${1:-}" in
     ;;
   shot)
     shot "${2:?usage: $0 shot <name>}"
+    ;;
+  network)
+    network "${2:-}"
     ;;
   fn)
     shift
